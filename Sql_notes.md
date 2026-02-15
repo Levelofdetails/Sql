@@ -197,6 +197,166 @@ JOIN OrderItems oi ON o.OrderID = oi.OrderID
 GROUP BY c.CustomerID, c.FirstName;
 ```
 
+*****************************************************************************************************************************************************
+Databricks SQL fully supports **window functions**, so your original query works exactly as written.  
+But if you want **Databricks‑specific** alternatives or best practices, here’s a clean set of options tailored for **Databricks SQL**.
+
+---
+
+# 🔵 **1. Standard Window Function (Databricks SQL)**  
+This is the most common and recommended approach:
+
+```sql
+SELECT 
+    c.CustomerID,
+    c.FirstName,
+    SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent,
+    RANK() OVER (ORDER BY SUM(oi.Quantity * oi.UnitPrice) DESC) AS SpendingRank
+FROM Customers c
+JOIN Orders o ON c.CustomerID = o.CustomerID
+JOIN OrderItems oi ON o.OrderID = oi.OrderID
+GROUP BY c.CustomerID, c.FirstName;
+```
+
+Works perfectly in Databricks SQL.
+
+---
+
+# 🔵 **2. Using DENSE_RANK() (Databricks SQL)**  
+If you want no gaps in ranking:
+
+```sql
+SELECT 
+    c.CustomerID,
+    c.FirstName,
+    SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent,
+    DENSE_RANK() OVER (ORDER BY SUM(oi.Quantity * oi.UnitPrice) DESC) AS SpendingRank
+FROM Customers c
+JOIN Orders o ON c.CustomerID = o.CustomerID
+JOIN OrderItems oi ON o.OrderID = oi.OrderID
+GROUP BY c.CustomerID, c.FirstName;
+```
+
+---
+
+# 🔵 **3. Using ROW_NUMBER() (Databricks SQL)**  
+If you want strict ranking (no ties):
+
+```sql
+SELECT 
+    c.CustomerID,
+    c.FirstName,
+    SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent,
+    ROW_NUMBER() OVER (ORDER BY SUM(oi.Quantity * oi.UnitPrice) DESC) AS SpendingRank
+FROM Customers c
+JOIN Orders o ON c.CustomerID = o.CustomerID
+JOIN OrderItems oi ON o.OrderID = oi.OrderID
+GROUP BY c.CustomerID, c.FirstName;
+```
+
+---
+
+# 🔵 **4. Using NTILE() (Quartiles / Percentiles)**  
+Useful for segmentation (top 25%, next 25%, etc.):
+
+```sql
+SELECT 
+    c.CustomerID,
+    c.FirstName,
+    SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent,
+    NTILE(4) OVER (ORDER BY SUM(oi.Quantity * oi.UnitPrice) DESC) AS SpendingQuartile
+FROM Customers c
+JOIN Orders o ON c.CustomerID = o.CustomerID
+JOIN OrderItems oi ON o.OrderID = oi.OrderID
+GROUP BY c.CustomerID, c.FirstName;
+```
+
+---
+
+# 🔵 **5. Using a CTE + Window Function (Cleaner for Databricks SQL)**  
+This is the most readable version and very common in Databricks notebooks:
+
+```sql
+WITH totals AS (
+    SELECT 
+        c.CustomerID,
+        c.FirstName,
+        SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent
+    FROM Customers c
+    JOIN Orders o ON c.CustomerID = o.CustomerID
+    JOIN OrderItems oi ON o.OrderID = oi.OrderID
+    GROUP BY c.CustomerID, c.FirstName
+)
+SELECT 
+    *,
+    RANK() OVER (ORDER BY TotalSpent DESC) AS SpendingRank
+FROM totals;
+```
+
+---
+
+# 🔵 **6. Using Databricks SQL `PERCENT_RANK()`**  
+If you want a percentile‑based ranking:
+
+```sql
+WITH totals AS (
+    SELECT 
+        c.CustomerID,
+        c.FirstName,
+        SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent
+    FROM Customers c
+    JOIN Orders o ON c.CustomerID = o.CustomerID
+    JOIN OrderItems oi ON o.OrderID = oi.OrderID
+    GROUP BY c.CustomerID, c.FirstName
+)
+SELECT 
+    *,
+    PERCENT_RANK() OVER (ORDER BY TotalSpent DESC) AS SpendingPercentile
+FROM totals;
+```
+
+---
+
+# 🔵 **7. Using a Correlated Subquery (Works in Databricks SQL too)**  
+Not recommended, but useful when teaching SQL fundamentals:
+
+```sql
+WITH totals AS (
+    SELECT 
+        c.CustomerID,
+        c.FirstName,
+        SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent
+    FROM Customers c
+    JOIN Orders o ON c.CustomerID = o.CustomerID
+    JOIN OrderItems oi ON o.OrderID = oi.OrderID
+    GROUP BY c.CustomerID, c.FirstName
+)
+SELECT 
+    t1.*,
+    (SELECT COUNT(DISTINCT t2.TotalSpent)
+     FROM totals t2
+     WHERE t2.TotalSpent > t1.TotalSpent) + 1 AS SpendingRank
+FROM totals t1;
+```
+
+---
+
+# 🎯 **Which one is best for Databricks SQL?**
+
+| Method | Best Use Case |
+|--------|---------------|
+| **RANK()** | Ranking with ties (1,2,2,4) |
+| **DENSE_RANK()** | Ranking without gaps (1,2,2,3) |
+| **ROW_NUMBER()** | Strict ranking (1,2,3,4) |
+| **NTILE()** | Segmentation (quartiles/deciles) |
+| **PERCENT_RANK()** | Percentile scoring |
+| **CTE + Window** | Cleanest for production |
+| **Correlated Subquery** | Teaching SQL logic |
+
+---
+
+
+
 ---
 
 # ⭐ **14. CTE: Find orders above average value**
